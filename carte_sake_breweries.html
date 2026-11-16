@@ -1,0 +1,1020 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>酒蔵マップ / Sake Breweries Map</title>
+
+<link
+  rel="stylesheet"
+  href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+  integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+  crossorigin=""
+/>
+<script
+  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+  crossorigin=""
+></script>
+
+<style>
+  :root {
+    /* Palette Bleu Clair / SaaS */
+    --bg: #f0f4f8;           /* Fond général clair */
+    --panel: #ffffff;        /* Fond des panneaux blanc */
+    --panel-2: #f8fafc;      /* Fond des inputs très clair */
+    --text: #1e293b;         /* Texte principal foncé (ardoise) */
+    --muted: #64748b;        /* Texte secondaire gris */
+    --accent: #2563eb;       /* Bleu roi (boutons, accents) */
+    --accent-hover: #1d4ed8;
+    --accent-light: #dbeafe; /* Bleu très pâle pour les fonds */
+    --accent-text: #1e40af;  
+    --ok: #059669;           /* Vert badge OK */
+    --ko: #dc2626;           /* Rouge badge KO */
+    --border: #e2e8f0;       /* Bordures grises claires */
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", "Hiragino Kaku Gothic ProN",
+                 "Noto Sans JP", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    display: flex;
+    flex-direction: column;
+    height: 100vh;
+    overflow: hidden;
+  }
+
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.6rem 1rem;
+    background: var(--panel);
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
+    z-index: 1000;
+  }
+  header h1 {
+    font-size: 1.05rem;
+    margin: 0;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    color: var(--text);
+  }
+  header h1 small {
+    color: var(--accent);
+    font-weight: 500;
+    margin-left: 0.5rem;
+    font-size: 0.8rem;
+  }
+  .header-controls {
+    display: flex;
+    gap: 0.6rem;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .segmented {
+    display: inline-flex;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    overflow: hidden;
+    background: var(--panel-2);
+  }
+  .segmented button {
+    background: transparent;
+    color: var(--muted);
+    border: 0;
+    padding: 0.32rem 0.8rem;
+    cursor: pointer;
+    font-size: 0.8rem;
+    font-weight: 600;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .segmented button.active {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.3);
+  }
+  .segmented button:hover:not(.active) {
+    color: var(--text);
+    background: var(--accent-light);
+  }
+
+  main {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+
+  #map {
+    flex: 1;
+    height: 100%;
+    background: #e2e8f0;
+  }
+
+  aside {
+    width: 360px;
+    min-width: 280px;
+    background: var(--panel);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    z-index: 1000;
+    box-shadow: -2px 0 10px rgba(0,0,0,0.03);
+  }
+  aside .panel-head {
+    padding: 0.8rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    background: var(--panel);
+  }
+  aside input[type="search"],
+  aside select {
+    width: 100%;
+    background: var(--panel-2);
+    color: var(--text);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 0.5rem 0.6rem;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+  aside input[type="search"]::placeholder { color: #94a3b8; }
+  aside input[type="search"]:focus,
+  aside select:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-light);
+    background: #fff;
+  }
+
+  #stats {
+    padding: 0.5rem 0.9rem;
+    font-size: 0.75rem;
+    color: var(--accent-text);
+    background: var(--accent-light);
+    border-bottom: 1px solid var(--border);
+    font-weight: 600;
+  }
+
+  #legend {
+    padding: 0.6rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    max-height: 140px;
+    overflow-y: auto;
+  }
+  .legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    background: var(--panel-2);
+    color: var(--muted);
+    border: 1px solid var(--border);
+    transition: all 0.15s ease;
+  }
+  .legend-item:hover { 
+    color: var(--text); 
+    background: #e2e8f0;
+  }
+  .legend-item.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+    box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+  }
+  .legend-item.active .count-badge { color: rgba(255,255,255,0.7); }
+  .legend-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    border: 1px solid rgba(0,0,0,0.1);
+    flex-shrink: 0;
+  }
+
+  #type-legend {
+    padding: 0.5rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+    color: var(--muted);
+    background: #fcfcfc;
+  }
+  .type-legend-item {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+  .type-swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 3px;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+
+  #list {
+    flex: 1;
+    overflow-y: auto;
+    background: #fff;
+  }
+  
+  /* Scrollbar personnalisée claire */
+  #list::-webkit-scrollbar, #legend::-webkit-scrollbar { width: 8px; }
+  #list::-webkit-scrollbar-track, #legend::-webkit-scrollbar-track { background: #fff; }
+  #list::-webkit-scrollbar-thumb, #legend::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  #list::-webkit-scrollbar-thumb:hover, #legend::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  .item {
+    padding: 0.7rem 0.9rem;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background 0.15s ease;
+    display: flex;
+    gap: 0.6rem;
+    align-items: flex-start;
+  }
+  .item:hover { background: var(--panel-2); }
+  .item.active { 
+    background: var(--accent-light); 
+    border-left: 3px solid var(--accent); 
+  }
+  .item .swatch {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    margin-top: 0.25rem;
+    flex-shrink: 0;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  .item .body { flex: 1; min-width: 0; }
+  .item .name { font-weight: 600; font-size: 0.9rem; color: var(--text); }
+  .item .meta { font-size: 0.75rem; color: var(--muted); margin-top: 0.2rem; }
+  .item .badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    padding: 0.1rem 0.45rem;
+    border-radius: 999px;
+    margin-left: 0.4rem;
+    vertical-align: middle;
+    font-weight: 600;
+  }
+  .badge.ok { background: #ecfdf5; color: var(--ok); border: 1px solid #d1fae5; }
+  .badge.ko { background: #fef2f2; color: var(--ko); border: 1px solid #fee2e2; }
+
+  /* Popup Leaflet clair */
+  .leaflet-popup-content-wrapper {
+    background: #ffffff;
+    color: var(--text);
+    border-radius: 8px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.15);
+    border: 1px solid var(--border);
+    padding: 0;
+    overflow: hidden;
+  }
+  .leaflet-popup-content {
+    margin: 12px 14px;
+  }
+  .leaflet-popup-tip { background: #ffffff; border: 1px solid var(--border); border-top: none; border-left: none; }
+  
+  .popup-title { 
+    font-weight: 700; 
+    font-size: 1rem; 
+    margin-bottom: 0.4rem; 
+    display: flex; 
+    align-items: center; 
+    gap: 0.4rem; 
+    color: #0f172a;
+  }
+  .popup-title .dot { width: 10px; height: 10px; border-radius: 50%; border: 1px solid rgba(0,0,0,0.1); flex-shrink: 0; }
+  .popup-row { font-size: 0.8rem; color: var(--muted); margin: 0.15rem 0; }
+  .popup-row a { color: var(--accent); text-decoration: none; font-weight: 500; }
+  .popup-row a:hover { text-decoration: underline; }
+  .popup-row .label { color: var(--text); font-weight: 600; margin-right: 0.25rem; }
+  .popup-region {
+    font-size: 0.7rem;
+    padding: 0.15rem 0.5rem;
+    border-radius: 999px;
+    background: var(--panel-2);
+    color: var(--muted);
+    margin-left: auto;
+    border: 1px solid var(--border);
+  }
+
+  .leaflet-control-attribution { 
+    font-size: 10px !important; 
+    background: rgba(255,255,255,0.8) !important; 
+    color: #333 !important;
+  }
+  .leaflet-control-attribution a { color: var(--accent) !important; }
+
+  /* Contrôle Leaflet "légende régions" */
+  .leaflet-bottom.leaflet-left .region-legend-control {
+    background: #ffffff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 0.6rem 0.7rem;
+    font-size: 0.75rem;
+    color: var(--text);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    max-width: 240px;
+  }
+  .region-legend-control .row {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin: 0.2rem 0;
+    cursor: pointer;
+    padding: 0.2rem 0.3rem;
+    border-radius: 4px;
+    transition: background 0.15s;
+  }
+  .region-legend-control .row:hover { background: var(--panel-2); }
+  .region-legend-control .row .dot {
+    width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    border: 1px solid rgba(0,0,0,0.1);
+  }
+  .region-legend-control .row .label { flex: 1; font-weight: 500; }
+  .region-legend-control .row .count { color: var(--muted); font-size: 0.7rem; font-weight: 600; }
+  .region-legend-control .row.active { background: var(--accent-light); color: var(--accent-text); font-weight: 700; }
+  .region-legend-control .row.active .label { color: var(--accent-text); }
+
+  @media (max-width: 760px) {
+    main { flex-direction: column-reverse; }
+    aside { width: 100%; height: 45%; border-left: 0; border-top: 1px solid var(--border); }
+    #map { height: 55%; }
+    header { gap: 0.5rem; padding: 0.5rem 0.7rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1 id="title">酒蔵マップ <small id="subtitle">Sake Breweries Map</small></h1>
+  <div class="header-controls">
+    <div class="segmented" id="lang-switch" role="group" aria-label="Language">
+      <button data-lang="jp" class="active">日本語</button>
+      <button data-lang="en">EN</button>
+      <button data-lang="fr">FR</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div id="map"></div>
+  <aside>
+    <div class="panel-head">
+      <input type="search" id="search" placeholder="" />
+      <select id="prefecture">
+        <option value=""></option>
+      </select>
+      <select id="type">
+        <option value=""></option>
+      </select>
+    </div>
+    <div id="stats">…</div>
+    <div id="legend"></div>
+    <div id="type-legend"></div>
+    <div id="list"></div>
+  </aside>
+</main>
+
+<script>
+/* =========================================================
+   Configuration
+   ========================================================= */
+const JSON_URL =
+  "https://raw.githubusercontent.com/Evasionsrebelles/divers_json/main/sake_breweries.json";
+
+const I18N = {
+  jp: {
+    title: "酒蔵マップ",
+    subtitle: "全国の酒蔵とＧＩ登録産品",
+    searchPlaceholder: "名前で検索…",
+    allPrefs: "すべての都道府県",
+    allTypes: "すべての種別",
+    stats: (n, total, withCoords) =>
+      `${n} / ${total} 件表示（座標あり：${withCoords}）`,
+    address: "住所",
+    prefectureLabel: "都道府県",
+    type: "種別",
+    brand: "代表銘柄",
+    website: "ウェブサイト",
+    region: "地域",
+    noCoords: "座標なし",
+    geocoded: "位置情報あり",
+    loading: "読み込み中…",
+    error: "読み込みエラー",
+    empty: "該当する酒蔵はありません",
+    regions: {
+      hokkaido: "北海道", tohoku: "東北", kanto: "関東", chubu: "中部",
+      kansai: "近畿", chugoku: "中国", shikoku: "四国", kyushu: "九州", okinawa: "沖縄",
+    },
+    legendTitle: "地域",
+    legendAll: "すべて",
+    typeLegendTitle: "種別",
+  },
+  en: {
+    title: "Sake Breweries Map",
+    subtitle: "Breweries and GI products across Japan",
+    searchPlaceholder: "Search by name…",
+    allPrefs: "All prefectures",
+    allTypes: "All types",
+    stats: (n, total, withCoords) =>
+      `${n} / ${total} shown (with coords: ${withCoords})`,
+    address: "Address",
+    prefectureLabel: "Prefecture",
+    type: "Type",
+    brand: "Signature brand",
+    website: "Website",
+    region: "Region",
+    noCoords: "No coordinates",
+    geocoded: "Geolocated",
+    loading: "Loading…",
+    error: "Loading error",
+    empty: "No matching brewery",
+    regions: {
+      hokkaido: "Hokkaidō", tohoku: "Tōhoku", kanto: "Kantō", chubu: "Chūbu",
+      kansai: "Kansai", chugoku: "Chūgoku", shikoku: "Shikoku", kyushu: "Kyūshū", okinawa: "Okinawa",
+    },
+    legendTitle: "Region",
+    legendAll: "All",
+    typeLegendTitle: "Type",
+  },
+  fr: {
+    title: "Carte des brasseries de saké",
+    subtitle: "Brasseries et produits IG au Japon",
+    searchPlaceholder: "Rechercher par nom…",
+    allPrefs: "Toutes les préfectures",
+    allTypes: "Tous les types",
+    stats: (n, total, withCoords) =>
+      `${n} / ${total} affichés (avec coordonnées : ${withCoords})`,
+    address: "Adresse",
+    prefectureLabel: "Préfecture",
+    type: "Type",
+    brand: "Marque phare",
+    website: "Site web",
+    region: "Région",
+    noCoords: "Sans coordonnées",
+    geocoded: "Géolocalisé",
+    loading: "Chargement…",
+    error: "Erreur de chargement",
+    empty: "Aucune brasserie correspondante",
+    regions: {
+      hokkaido: "Hokkaidō", tohoku: "Tōhoku", kanto: "Kantō", chubu: "Chūbu",
+      kansai: "Kansai", chugoku: "Chūgoku", shikoku: "Shikoku", kyushu: "Kyūshū", okinawa: "Okinawa",
+    },
+    legendTitle: "Région",
+    legendAll: "Toutes",
+    typeLegendTitle: "Type",
+  },
+};
+
+/* =========================================================
+   Traductions des préfectures (jp -> en/fr)
+   ========================================================= */
+const PREF_TRANSLATIONS = {
+  "北海道": { en: "Hokkaido", fr: "Hokkaido" },
+  "青森": { en: "Aomori", fr: "Aomori" }, "青森県": { en: "Aomori", fr: "Aomori" },
+  "岩手": { en: "Iwate", fr: "Iwate" }, "岩手県": { en: "Iwate", fr: "Iwate" },
+  "宮城": { en: "Miyagi", fr: "Miyagi" }, "宮城県": { en: "Miyagi", fr: "Miyagi" },
+  "秋田": { en: "Akita", fr: "Akita" }, "秋田県": { en: "Akita", fr: "Akita" },
+  "山形": { en: "Yamagata", fr: "Yamagata" }, "山形県": { en: "Yamagata", fr: "Yamagata" },
+  "福島": { en: "Fukushima", fr: "Fukushima" }, "福島県": { en: "Fukushima", fr: "Fukushima" },
+  "茨城": { en: "Ibaraki", fr: "Ibaraki" }, "茨城県": { en: "Ibaraki", fr: "Ibaraki" },
+  "栃木": { en: "Tochigi", fr: "Tochigi" }, "栃木県": { en: "Tochigi", fr: "Tochigi" },
+  "群馬": { en: "Gunma", fr: "Gunma" }, "群馬県": { en: "Gunma", fr: "Gunma" },
+  "埼玉": { en: "Saitama", fr: "Saitama" }, "埼玉県": { en: "Saitama", fr: "Saitama" },
+  "千葉": { en: "Chiba", fr: "Chiba" }, "千葉県": { en: "Chiba", fr: "Chiba" },
+  "東京": { en: "Tokyo", fr: "Tokyo" }, "東京都": { en: "Tokyo", fr: "Tokyo" },
+  "神奈川": { en: "Kanagawa", fr: "Kanagawa" }, "神奈川県": { en: "Kanagawa", fr: "Kanagawa" },
+  "新潟": { en: "Niigata", fr: "Niigata" }, "新潟県": { en: "Niigata", fr: "Niigata" },
+  "富山": { en: "Toyama", fr: "Toyama" }, "富山県": { en: "Toyama", fr: "Toyama" },
+  "石川": { en: "Ishikawa", fr: "Ishikawa" }, "石川県": { en: "Ishikawa", fr: "Ishikawa" },
+  "福井": { en: "Fukui", fr: "Fukui" }, "福井県": { en: "Fukui", fr: "Fukui" },
+  "山梨": { en: "Yamanashi", fr: "Yamanashi" }, "山梨県": { en: "Yamanashi", fr: "Yamanashi" },
+  "長野": { en: "Nagano", fr: "Nagano" }, "長野県": { en: "Nagano", fr: "Nagano" },
+  "岐阜": { en: "Gifu", fr: "Gifu" }, "岐阜県": { en: "Gifu", fr: "Gifu" },
+  "静岡": { en: "Shizuoka", fr: "Shizuoka" }, "静岡県": { en: "Shizuoka", fr: "Shizuoka" },
+  "愛知": { en: "Aichi", fr: "Aichi" }, "愛知県": { en: "Aichi", fr: "Aichi" },
+  "三重": { en: "Mie", fr: "Mie" }, "三重県": { en: "Mie", fr: "Mie" },
+  "滋賀": { en: "Shiga", fr: "Shiga" }, "滋賀県": { en: "Shiga", fr: "Shiga" },
+  "京都": { en: "Kyoto", fr: "Kyoto" }, "京都府": { en: "Kyoto", fr: "Kyoto" },
+  "大阪": { en: "Osaka", fr: "Osaka" }, "大阪府": { en: "Osaka", fr: "Osaka" },
+  "兵庫": { en: "Hyogo", fr: "Hyogo" }, "兵庫県": { en: "Hyogo", fr: "Hyogo" },
+  "奈良": { en: "Nara", fr: "Nara" }, "奈良県": { en: "Nara", fr: "Nara" },
+  "和歌山": { en: "Wakayama", fr: "Wakayama" }, "和歌山県": { en: "Wakayama", fr: "Wakayama" },
+  "鳥取": { en: "Tottori", fr: "Tottori" }, "鳥取県": { en: "Tottori", fr: "Tottori" },
+  "島根": { en: "Shimane", fr: "Shimane" }, "島根県": { en: "Shimane", fr: "Shimane" },
+  "岡山": { en: "Okayama", fr: "Okayama" }, "岡山県": { en: "Okayama", fr: "Okayama" },
+  "広島": { en: "Hiroshima", fr: "Hiroshima" }, "広島県": { en: "Hiroshima", fr: "Hiroshima" },
+  "山口": { en: "Yamaguchi", fr: "Yamaguchi" }, "山口県": { en: "Yamaguchi", fr: "Yamaguchi" },
+  "徳島": { en: "Tokushima", fr: "Tokushima" }, "徳島県": { en: "Tokushima", fr: "Tokushima" },
+  "香川": { en: "Kagawa", fr: "Kagawa" }, "香川県": { en: "Kagawa", fr: "Kagawa" },
+  "愛媛": { en: "Ehime", fr: "Ehime" }, "愛媛県": { en: "Ehime", fr: "Ehime" },
+  "高知": { en: "Kochi", fr: "Kochi" }, "高知県": { en: "Kochi", fr: "Kochi" },
+  "福岡": { en: "Fukuoka", fr: "Fukuoka" }, "福岡県": { en: "Fukuoka", fr: "Fukuoka" },
+  "佐賀": { en: "Saga", fr: "Saga" }, "佐賀県": { en: "Saga", fr: "Saga" },
+  "長崎": { en: "Nagasaki", fr: "Nagasaki" }, "長崎県": { en: "Nagasaki", fr: "Nagasaki" },
+  "熊本": { en: "Kumamoto", fr: "Kumamoto" }, "熊本県": { en: "Kumamoto", fr: "Kumamoto" },
+  "大分": { en: "Oita", fr: "Oita" }, "大分県": { en: "Oita", fr: "Oita" },
+  "宮崎": { en: "Miyazaki", fr: "Miyazaki" }, "宮崎県": { en: "Miyazaki", fr: "Miyazaki" },
+  "鹿児島": { en: "Kagoshima", fr: "Kagoshima" }, "鹿児島県": { en: "Kagoshima", fr: "Kagoshima" },
+  "沖縄": { en: "Okinawa", fr: "Okinawa" }, "沖縄県": { en: "Okinawa", fr: "Okinawa" },
+};
+
+/* =========================================================
+   Traductions des types (jp -> en/fr)
+   ========================================================= */
+const TYPE_TRANSLATIONS = {
+  "酒造": { en: "Sake brewery", fr: "Brasserie de saké" },
+  "観光": { en: "Tourism", fr: "Tourisme" },
+  "宿": { en: "Inn", fr: "Auberge" },
+  "酢醸造": { en: "Vinegar brewing", fr: "Vinaigrerie" },
+  "炭酸水": { en: "Sparkling water", fr: "Eau gazeuse" },
+  "豆腐": { en: "Tofu", fr: "Tofu" },
+  "米造": { en: "Rice brewing", fr: "Rizerie" },
+  "酒造（ＧＩはりま）": { en: "Sake brewery (GI Harima)", fr: "Brasserie de saké (IG Harima)" },
+  "酒造（ＧＩ三重）": { en: "Sake brewery (GI Mie)", fr: "Brasserie de saké (IG Mie)" },
+  "酒造（ＧＩ山形）": { en: "Sake brewery (GI Yamagata)", fr: "Brasserie de saké (IG Yamagata)" },
+  "酒造（ＧＩ灘五郷）": { en: "Sake brewery (GI Nada-Gogo)", fr: "Brasserie de saké (IG Nada-Gogo)" },
+  "酒造（ＧＩ萩）": { en: "Sake brewery (GI Hagi)", fr: "Brasserie de saké (IG Hagi)" },
+  "酒造（ＧＩ白山）": { en: "Sake brewery (GI Hakusan)", fr: "Brasserie de saké (IG Hakusan)" },
+  "酒造（ＧＩ利根沼田）": { en: "Sake brewery (GI Tone-Numata)", fr: "Brasserie de saké (IG Tone-Numata)" },
+};
+
+function trPref(jpName) {
+  if (currentLang === "jp") return jpName;
+  const tr = PREF_TRANSLATIONS[jpName];
+  return tr ? (tr[currentLang] || jpName) : jpName;
+}
+
+function trType(jpName) {
+  if (currentLang === "jp") return jpName;
+  const tr = TYPE_TRANSLATIONS[jpName];
+  return tr ? (tr[currentLang] || jpName) : jpName;
+}
+
+/* =========================================================
+   Régions et Couleurs
+   ========================================================= */
+const REGION_COLORS = {
+  hokkaido: "#3b82f6", tohoku: "#10b981", kanto: "#f59e0b", chubu: "#a855f7",
+  kansai: "#ec4899", chugoku: "#14b8a6", shikoku: "#eab308", kyushu: "#ef4444", okinawa: "#8b5cf6",
+};
+const REGION_ORDER = [
+  "hokkaido", "tohoku", "kanto", "chubu", "kansai", "chugoku", "shikoku", "kyushu", "okinawa",
+];
+const PREF_TO_REGION = {
+  "北海道": "hokkaido",
+  "青森": "tohoku", "岩手": "tohoku", "宮城": "tohoku", "秋田": "tohoku", "山形": "tohoku", "福島": "tohoku",
+  "茨城": "kanto", "栃木": "kanto", "群馬": "kanto", "埼玉": "kanto", "千葉": "kanto", "東京": "kanto", "神奈川": "kanto",
+  "新潟": "chubu", "富山": "chubu", "石川": "chubu", "福井": "chubu", "山梨": "chubu", "長野": "chubu", "岐阜": "chubu", "静岡": "chubu", "愛知": "chubu",
+  "三重": "kansai", "滋賀": "kansai", "京都": "kansai", "大阪": "kansai", "兵庫": "kansai", "奈良": "kansai", "和歌山": "kansai",
+  "鳥取": "chugoku", "島根": "chugoku", "岡山": "chugoku", "広島": "chugoku", "山口": "chugoku",
+  "徳島": "shikoku", "香川": "shikoku", "愛媛": "shikoku", "高知": "shikoku",
+  "福岡": "kyushu", "佐賀": "kyushu", "長崎": "kyushu", "熊本": "kyushu", "大分": "kyushu", "宮崎": "kyushu", "鹿児島": "kyushu",
+  "沖縄": "okinawa",
+};
+
+const TYPE_SHADES = {
+  "酒造": 0.0,
+  "酒造（ＧＩ山形）": 0.25, "酒造（ＧＩはりま）": 0.25, "酒造（ＧＩ三重）": 0.25,
+  "酒造（ＧＩ灘五郷）": 0.25, "酒造（ＧＩ萩）": 0.25, "酒造（ＧＩ白山）": 0.25, "酒造（ＧＩ利根沼田）": 0.25,
+  "酢醸造": 0.35,
+  "炭酸水": 0.55,
+  "米造": 0.65,
+  "豆腐": 0.75,
+};
+const DEFAULT_SHADE = 0.5;
+
+function hexToRgb(hex) {
+  const h = hex.replace("#", "");
+  return { r: parseInt(h.substring(0, 2), 16), g: parseInt(h.substring(2, 4), 16), b: parseInt(h.substring(4, 6), 16) };
+}
+function rgbToHex(r, g, b) {
+  const c = (v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0");
+  return "#" + c(r) + c(g) + c(b);
+}
+function mix(hex, target, ratio) {
+  const a = hexToRgb(hex);
+  const b = hexToRgb(target);
+  return rgbToHex(a.r + (b.r - a.r) * ratio, a.g + (b.g - a.g) * ratio, a.b + (b.b - a.b) * ratio);
+}
+function shadeColor(baseHex, shade) {
+  return mix(baseHex, "#ffffff", Math.min(1, Math.max(0, shade)));
+}
+
+function regionOf(record) {
+  const pref = record.prefecture_jp || "";
+  return PREF_TO_REGION[pref] || null;
+}
+function typeShadeOf(record) {
+  const ty = record.type_jp || "";
+  return Object.prototype.hasOwnProperty.call(TYPE_SHADES, ty) ? TYPE_SHADES[ty] : DEFAULT_SHADE;
+}
+function colorOf(record) {
+  const region = regionOf(record);
+  const base = REGION_COLORS[region] || "#9ca3af";
+  return shadeColor(base, typeShadeOf(record));
+}
+
+let currentLang = "jp";
+let allRecords = [];
+let filtered = [];
+let map, markerLayer, markersById = {};
+let activeId = null;
+let activeRegion = "";
+
+function t(key, ...args) {
+  const dict = I18N[currentLang];
+  const v = dict[key];
+  return typeof v === "function" ? v(...args) : v;
+}
+function regionLabel(key) { return I18N[currentLang].regions[key] || key; }
+
+function pick(record, keyJp, keyEn, keyFr) {
+  if (currentLang === "jp") return record[keyJp] || "";
+  if (currentLang === "en") return record[keyEn] || record[keyJp] || "";
+  return record[keyFr] || record[keyEn] || record[keyJp] || "";
+}
+function esc(s) {
+  return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+function hasCoords(r) {
+  const lat = parseFloat(r.latitude);
+  const lon = parseFloat(r.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180;
+}
+function getId(r, i) { return r["NO."] || r["name"] || `idx-${i}`; }
+
+map = L.map('map', {
+  center: [36.2048, 138.2529], zoom: 5, zoomControl: true, preferCanvas: true
+});
+
+L.tileLayer('https://mt1.google.com/vt/lyrs=m&x={x}&y={y}&z={z}', {
+  attribution: '&copy; <a href="https://www.google.com/maps" target="_blank">Google Maps</a>',
+  maxZoom: 20, subdomains: ['mt0', 'mt1', 'mt2', 'mt3']
+}).addTo(map);
+
+markerLayer = L.layerGroup().addTo(map);
+setTimeout(() => map.invalidateSize(), 200);
+window.addEventListener('resize', () => map.invalidateSize());
+
+const regionLegendControl = L.control({ position: 'bottomleft' });
+regionLegendControl.onAdd = function () {
+  const div = L.DomUtil.create('div', 'region-legend-control');
+  div.id = 'region-legend-control';
+  L.DomEvent.disableClickPropagation(div);
+  return div;
+};
+regionLegendControl.addTo(map);
+
+function updateRegionLegendControl() {
+  const el = document.getElementById('region-legend-control');
+  if (!el) return;
+  const counts = {};
+  allRecords.forEach(r => {
+    const reg = regionOf(r);
+    if (reg) counts[reg] = (counts[reg] || 0) + 1;
+  });
+  el.innerHTML =
+    `<div style="font-weight:700;margin-bottom:0.4rem;color:#1e293b;font-size:0.8rem;">${esc(t('legendTitle'))}</div>` +
+    REGION_ORDER.map(reg => {
+      const active = activeRegion === reg ? ' active' : '';
+      return `<div class="row${active}" data-region="${reg}">
+        <span class="dot" style="background:${REGION_COLORS[reg]};"></span>
+        <span class="label">${esc(regionLabel(reg))}</span>
+        <span class="count">${counts[reg] || 0}</span>
+      </div>`;
+    }).join("");
+  el.querySelectorAll('.row').forEach(row => {
+    row.addEventListener('click', () => {
+      const reg = row.dataset.region;
+      activeRegion = (activeRegion === reg) ? "" : reg;
+      renderLegend();
+      updateRegionLegendControl();
+      applyFilters();
+    });
+  });
+}
+
+function popupHtml(r) {
+  const nameJp = r["name"] || "";
+  const nameEn = r["name_en"] || "";
+  const nameFr = r["name_fr"] || "";
+  const title = pick(r, "name", "name_en", "name_fr") || nameJp;
+
+  const addr = pick(r, "住所", "address", "address") || r["address"] || "";
+  const pref = pick(r, "prefecture_jp", "prefecture_en", "prefecture_fr") || "";
+  const type = pick(r, "type_jp", "type_en", "type_fr") || "";
+  const brand = r["代表的な日本酒銘柄（☆ＧＩ登録）"] || "";
+  const url = r["URL"] || "";
+
+  const region = regionOf(r);
+  const color = colorOf(r);
+
+  const rows = [];
+  if (region) rows.push(`<div class="popup-row"><span class="label">${t("region")}:</span>${esc(regionLabel(region))}</div>`);
+  if (pref)   rows.push(`<div class="popup-row"><span class="label">${t("prefectureLabel")}:</span>${esc(trPref(pref))}</div>`);
+  if (type)   rows.push(`<div class="popup-row"><span class="label">${t("type")}:</span>${esc(trType(type))}</div>`);
+  if (addr)   rows.push(`<div class="popup-row"><span class="label">${t("address")}:</span>${esc(addr)}</div>`);
+  if (brand)  rows.push(`<div class="popup-row"><span class="label">${t("brand")}:</span>${esc(brand)}</div>`);
+  if (url) {
+    const safe = /^https?:\/\//i.test(url) ? url : "";
+    if (safe) rows.push(
+      `<div class="popup-row"><span class="label">${t("website")}:</span>` +
+      `<a href="${esc(safe)}" target="_blank" rel="noopener">${esc(safe)}</a></div>`
+    );
+  }
+  if (!hasCoords(r)) {
+    rows.push(`<div class="popup-row" style="color:var(--ko);font-weight:600;">${t("noCoords")}</div>`);
+  }
+
+  const alt = [];
+  if (currentLang !== "jp" && nameJp) alt.push(nameJp);
+  if (currentLang !== "en" && nameEn) alt.push(nameEn);
+  if (currentLang !== "fr" && nameFr) alt.push(nameFr);
+  const altHtml = alt.length ? `<div class="popup-row" style="opacity:.6;font-size:0.75rem;margin-bottom:0.4rem;">${alt.map(esc).join(" · ")}</div>` : "";
+
+  return `
+    <div class="popup-title">
+      <span class="dot" style="background:${color};"></span>
+      ${esc(title)}
+      ${region ? `<span class="popup-region">${esc(regionLabel(region))}</span>` : ""}
+    </div>
+    ${altHtml}${rows.join("")}`;
+}
+
+function renderMarkers() {
+  markerLayer.clearLayers();
+  markersById = {};
+  const withCoords = filtered.filter(hasCoords);
+  const group = L.featureGroup();
+
+  withCoords.forEach((r, i) => {
+    const id = getId(r, i);
+    const lat = parseFloat(r.latitude);
+    const lon = parseFloat(r.longitude);
+    const color = colorOf(r);
+
+    const m = L.circleMarker([lat, lon], {
+      radius: 6, color: '#ffffff', weight: 1.5, fillColor: color, fillOpacity: 1,
+    }).bindPopup(popupHtml(r), { maxWidth: 340 });
+
+    m.on('click', () => setActive(id, false));
+    m.addTo(markerLayer);
+    markersById[id] = m;
+    group.addLayer(m);
+  });
+
+  if (group.getLayers().length > 0) {
+    map.fitBounds(group.getBounds().pad(0.1), { maxZoom: 8 });
+  }
+}
+
+function renderLegend() {
+  const el = document.getElementById('legend');
+  const counts = {};
+  allRecords.forEach(r => {
+    const reg = regionOf(r);
+    if (reg) counts[reg] = (counts[reg] || 0) + 1;
+  });
+
+  const allActive = activeRegion === "" ? " active" : "";
+  let html = `<span class="legend-item${allActive}" data-region="">
+      <span class="legend-dot" style="background:linear-gradient(90deg,${REGION_ORDER.map(k => REGION_COLORS[k]).join(",")});"></span>
+      ${esc(t('legendAll'))}
+    </span>`;
+  html += REGION_ORDER.map(reg => {
+    const active = activeRegion === reg ? ' active' : '';
+    return `<span class="legend-item${active}" data-region="${reg}">
+      <span class="legend-dot" style="background:${REGION_COLORS[reg]};"></span>
+      ${esc(regionLabel(reg))}
+      <span class="count-badge" style="font-size:0.65rem; opacity:0.6;">${counts[reg] || 0}</span>
+    </span>`;
+  }).join("");
+  el.innerHTML = html;
+
+  el.querySelectorAll('.legend-item').forEach(item => {
+    item.addEventListener('click', () => {
+      const reg = item.dataset.region;
+      activeRegion = (activeRegion === reg) ? "" : reg;
+      renderLegend();
+      updateRegionLegendControl();
+      applyFilters();
+    });
+  });
+}
+
+function renderTypeLegend() {
+  const el = document.getElementById('type-legend');
+  const neutralBase = "#94a3b8";
+  const types = Object.keys(TYPE_SHADES);
+  el.innerHTML =
+    `<span style="font-weight:700;color:var(--text);margin-right:0.2rem;">${esc(t('typeLegendTitle'))}:</span>` +
+    types.map(ty => {
+      const c = shadeColor(neutralBase, TYPE_SHADES[ty]);
+      return `<span class="type-legend-item">
+        <span class="type-swatch" style="background:${c};"></span>
+        ${esc(trType(ty))}
+      </span>`;
+    }).join("");
+}
+
+function renderList() {
+  const list = document.getElementById("list");
+  list.innerHTML = "";
+
+  if (filtered.length === 0) {
+    list.innerHTML = `<div class="item" style="color:var(--muted); justify-content:center; padding:2rem 1rem;">${t("empty")}</div>`;
+    return;
+  }
+
+  const sorted = [...filtered].sort((a, b) => {
+    const pa = a.prefecture_jp || "", pb = b.prefecture_jp || "";
+    if (pa !== pb) return pa.localeCompare(pb, "ja");
+    return (a.name || "").localeCompare(b.name || "", "ja");
+  });
+
+  sorted.forEach((r, i) => {
+    const id = getId(r, i);
+    const name = pick(r, "name", "name_en", "name_fr") || r.name || "";
+    const prefRaw = pick(r, "prefecture_jp", "prefecture_en", "prefecture_fr") || "";
+    const typeRaw = pick(r, "type_jp", "type_en", "type_fr") || "";
+    const region = regionOf(r);
+    const color = colorOf(r);
+    const badge = hasCoords(r)
+      ? `<span class="badge ok">${t("geocoded")}</span>`
+      : `<span class="badge ko">${t("noCoords")}</span>`;
+
+    const div = document.createElement("div");
+    div.className = "item";
+    div.dataset.id = id;
+    div.innerHTML = `
+      <span class="swatch" style="background:${color};"></span>
+      <div class="body">
+        <div class="name">${esc(name)}${badge}</div>
+        <div class="meta">
+          ${region ? esc(regionLabel(region)) + " · " : ""}${esc(trPref(prefRaw))}${typeRaw ? " · " + esc(trType(typeRaw)) : ""}
+        </div>
+      </div>
+    `;
+    div.addEventListener("click", () => setActive(id, true));
+    list.appendChild(div);
+  });
+}
+
+function setActive(id, fromList) {
+  activeId = id;
+  document.querySelectorAll(".item").forEach(el => {
+    el.classList.toggle("active", el.dataset.id === id);
+  });
+
+  const r = filtered.find((rec, i) => getId(rec, i) === id);
+  if (!r) return;
+  const m = markersById[id];
+  if (m && fromList) {
+    map.setView(m.getLatLng(), Math.max(map.getZoom(), 10), { animate: true });
+    m.openPopup();
+  } else if (m) {
+    m.openPopup();
+  }
+}
+
+function applyFilters() {
+  const q = document.getElementById("search").value.trim().toLowerCase();
+  const pref = document.getElementById("prefecture").value;
+  const type = document.getElementById("type").value;
+
+  filtered = allRecords.filter(r => {
+    if (activeRegion && regionOf(r) !== activeRegion) return false;
+    if (pref && r.prefecture_jp !== pref) return false;
+    if (type && r.type_jp !== type) return false;
+    if (!q) return true;
+    const hay = [
+      r.name, r.name_en, r.name_fr,
+      r["代表的な日本酒銘柄（☆ＧＩ登録）"],
+      r.address, r["住所"],
+    ].filter(Boolean).join(" ").toLowerCase();
+    return hay.includes(q);
+  });
+
+  renderMarkers();
+  renderList();
+  updateStats();
+}
+
+function updateStats() {
+  const withCoords = filtered.filter(hasCoords).length;
+  document.getElementById("stats").textContent =
+    t("stats", filtered.length, allRecords.length, withCoords);
+}
+
+function populatePrefectureFilter() {
+  const sel = document.getElementById("prefecture");
+  const current = sel.value;
+  const prefs = [...new Set(allRecords.map(r => r.prefecture_jp).filter(Boolean))];
+  prefs.sort((a, b) => trPref(a).localeCompare(trPref(b)));
+
+  sel.innerHTML = `<option value="">${esc(t("allPrefs"))}</option>` +
+    prefs.map(p => `<option value="${esc(p)}">${esc(trPref(p))}</option>`).join("");
+  sel.value = current;
+}
+
+function populateTypeFilter() {
+  const sel = document.getElementById("type");
+  const current = sel.value;
+  const types = [...new Set(allRecords.map(r => r.type_jp).filter(Boolean))];
+  types.sort((a, b) => trType(a).localeCompare(trType(b)));
+
+  sel.innerHTML = `<option value="">${esc(t("allTypes"))}</option>` +
+    types.map(ty => `<option value="${esc(ty)}">${esc(trType(ty))}</option>`).join("");
+  sel.value = current;
+}
+
+function applyLanguage(lang) {
+  currentLang = lang;
+
+  document.querySelectorAll("#lang-switch button").forEach(b => {
+    b.classList.toggle("active", b.dataset.lang === lang);
+  });
+  document.documentElement.lang = lang === "jp" ? "ja" : lang;
+
+  document.getElementById("title").innerHTML = `${t("title")} <small>${t("subtitle")}</small>`;
+  document.getElementById("search").placeholder = t("searchPlaceholder");
+
+  populatePrefectureFilter();
+  populateTypeFilter();
+
+  renderLegend();
+  renderTypeLegend();
+  updateRegionLegendControl();
+
+  if (allRecords.length > 0) {
+    applyFilters();
+  } else {
+    updateStats();
+  }
+
+  Object.entries(markersById).forEach(([id, m]) => {
+    const r = filtered.find((rec, i) => getId(rec, i) === id);
+    if (r) m.setPopupContent(popupHtml(r));
+  });
+}
+
+async function loadData() {
+  document.getElementById("stats").textContent = t("loading");
+  try {
+    const resp = await fetch(JSON_URL, { cache: "no-store" });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    allRecords = Array.isArray(data) ? data : (data.records || []);
+    if (!Array.isArray(allRecords) || allRecords.length === 0) {
+      throw new Error("Aucun enregistrement");
+    }
+
+    populatePrefectureFilter();
+    populateTypeFilter();
+    applyFilters();
+    updateRegionLegendControl();
+  } catch (e) {
+    console.error(e);
+    document.getElementById("stats").textContent = `${t("error")} : ${e.message}`;
+    document.getElementById("list").innerHTML =
+      `<div class="item" style="color:var(--ko)">${t("error")} : ${esc(e.message)}</div>`;
+  }
+}
+
+document.querySelectorAll("#lang-switch button").forEach(btn => {
+  btn.addEventListener("click", () => applyLanguage(btn.dataset.lang));
+});
+document.getElementById("search").addEventListener("input", () => {
+  clearTimeout(window.__searchTimer);
+  window.__searchTimer = setTimeout(applyFilters, 200);
+});
+document.getElementById("prefecture").addEventListener("change", applyFilters);
+document.getElementById("type").addEventListener("change", applyFilters);
+
+applyLanguage("jp");
+loadData();
+</script>
+</body>
+</html>
